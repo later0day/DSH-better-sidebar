@@ -37,8 +37,16 @@ import './layout.css'
  *  (rc.8+) is the client module system the chunk loader resolves its
  *  externals through; `connection` (0.1.2-alpha.2+) is the Remote transport's
  *  recovery lifecycle the side chat's disconnect banner reads — Cordis guards
- *  service access without inject. */
-export const inject = ['slots', 'sessions', 'locale', 'modules', 'connection']
+ *  service access without inject.
+ *
+ *  `remote` / `remote.session` (0.1.7) are the Host Remote namespace the
+ *  "open in app" adapter calls (`canOpenWorkspacePath` /
+ *  `workspacePathApplications` / `openWorkspacePath`). BOTH entries are
+ *  required: Cordis validates the nested property access
+ *  (`ctx.get('remote').session`) against the inject list, and a missing
+ *  entry throws `cannot get property "remote.session" without inject` —
+ *  which, thrown from a render path, blanks the whole sidebar panel. */
+export const inject = ['slots', 'sessions', 'locale', 'modules', 'connection', 'remote', 'remote.session']
 
 /**
  * Error boundary over the sidebar tree (root scope): a render error in the
@@ -321,13 +329,15 @@ export function apply(ctx: Context): void {
         if (decision?.suspended) unmount()
         else mount()
       }
-      void sync()
+      // setPrefs and mount() run inside sync(); a rejection there would leave
+      // the sidebar unmounted with a dead toggle as its only symptom.
+      void sync().catch((error) => { fail('sync', error) })
       // Live re-evaluation: the runtime broadcasts settings-document updates
       // (the aionui card saves through the same document). Best effort —
       // deployments without the 'remote' service fall back to boot-time
       // evaluation only.
       const remote = ctx.get('remote') as { $on?: (event: string, listener: () => void) => () => void } | undefined
-      const offRemote = remote?.$on?.('settings/document-updated', () => { void sync() })
+      const offRemote = remote?.$on?.('settings/document-updated', () => { void sync().catch((error) => { fail('sync', error) }) })
       return () => {
         disposed = true
         offRemote?.()
