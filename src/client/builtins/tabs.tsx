@@ -37,6 +37,15 @@ import { api } from '../api.ts'
 import type { Context } from '../../context-types.ts'
 import type { TabDescriptor } from '../service.ts'
 
+/**
+ * A unique tab-id suffix. `crypto.randomUUID` exists only in secure contexts, so a page
+ * served over plain HTTP on a LAN address lacks it; fall back to a time-based id there.
+ */
+function tabNonce(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`
+}
+
 /** The 6 built-in tab descriptors (the host owns the right-Sidebar terminal and browser). */
 export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
   return [
@@ -217,7 +226,7 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
         }
         return {
           tab: {
-            id: `sidechat:new-${crypto.randomUUID()}`,
+            id: `sidechat:new-${tabNonce()}`,
             type: 'sidechat',
             title: t('sideChatUntitled'),
             meta: { autoCreate: true },

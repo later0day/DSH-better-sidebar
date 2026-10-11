@@ -14,7 +14,7 @@
  * terminal, which is `bottomOnly` and therefore contributes no native tab
  * type. It is the one built-in whose carrier surface is asserted here.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import { VscCommentDiscussion, VscGitCommit, VscLayers } from 'react-icons/vsc'
 // First import: browser globals before the xterm-carrying builtin graph loads.
@@ -151,6 +151,17 @@ describe('built-in tab registrations', () => {
     const second = sidechat?.createTab?.(undefined as never)
     expect(first?.tab.meta).toEqual({ autoCreate: true })
     expect(first?.tab.id).not.toBe(second?.tab.id)
+    // A plain-HTTP LAN page is no secure context, so crypto.randomUUID is
+    // absent there; minting must still succeed with distinct ids.
+    vi.stubGlobal('crypto', {})
+    try {
+      const insecureA = sidechat?.createTab?.(undefined as never)
+      const insecureB = sidechat?.createTab?.(undefined as never)
+      expect(insecureA?.tab.id).toMatch(/^sidechat:new-/)
+      expect(insecureA?.tab.id).not.toBe(insecureB?.tab.id)
+    } finally {
+      vi.unstubAllGlobals()
+    }
     // A parked reopen target mints the deterministic reattach tab, and
     // dedupeKey focuses an already-open thread instead of duplicating it.
     parkSidechatReopen('session-t1')
