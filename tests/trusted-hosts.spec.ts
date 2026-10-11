@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { tmpdir } from 'node:os'
+import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from '../src/index.ts'
 import type { SidebarWebRoute, SidebarWebUpgradeRoute } from '../src/context-types.ts'
@@ -157,6 +157,27 @@ describe('remote-access trust (webStartup.trustedHosts)', () => {
       const res = fakeRes()
       await api(lanRequest(), res as unknown as ServerResponse)
       expect(res.status).toBe(200)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('accepts this machine\'s own interface address under a wildcard bind, and refuses a foreign one', async () => {
+    const own = Object.values(networkInterfaces()).flat()
+      .find(iface => iface !== undefined && iface.family === 'IPv4' && !iface.internal)?.address
+    const { api, cleanup } = mount([], '0.0.0.0')
+    try {
+      const at = (host: string) => req('POST', '/sidebar/api/session.cwd', {
+        host: `${host}:3080`, 'sec-fetch-site': 'same-origin', origin: `http://${host}:3080`,
+      }, '{"sessionId":"test-session"}')
+      if (own !== undefined) {
+        const res = fakeRes()
+        await api(at(own), res as unknown as ServerResponse)
+        expect(res.status).toBe(200)
+      }
+      const foreign = fakeRes()
+      await api(at('192.0.2.77'), foreign as unknown as ServerResponse)
+      expect(foreign.status).toBe(403)
     } finally {
       cleanup()
     }

@@ -10,6 +10,7 @@
  * This is a DNS-rebinding / cross-site defense, not authentication.
  */
 import type { IncomingHttpHeaders } from 'node:http'
+import { networkInterfaces } from 'node:os'
 
 /** The request facts the fence reads (structural subset of IncomingMessage). */
 interface ApiTrustRequest {
@@ -71,9 +72,17 @@ function isTrustedAuthority(hostUrl: URL, trustedHosts: readonly string[]): bool
   })
 }
 
-/** Whether the request authority names the listener's own bind IP (any port), mirroring the Connection fence. */
+/**
+ * Whether the request authority names the listener's own bind IP (any port), mirroring the Connection fence.
+ * A wildcard bind (`0.0.0.0`, `::`) serves every interface, so this machine's own non-internal IPv4
+ * interface addresses count as the bind address; they are read per request so a new DHCP lease needs no restart.
+ */
 function isBindAddressAuthority(hostUrl: URL, bindHost: string | undefined): boolean {
   if (bindHost === undefined) return false
+  if (bindHost === '0.0.0.0' || bindHost === '::' || bindHost === '::ffff:0.0.0.0') {
+    return Object.values(networkInterfaces()).flat()
+      .some(iface => iface !== undefined && iface.family === 'IPv4' && !iface.internal && iface.address === hostUrl.hostname)
+  }
   const zoneAt = bindHost.indexOf('%')
   const address = zoneAt === -1 ? bindHost : bindHost.slice(0, zoneAt)
   const bindUrl = parseAuthority(address.includes(':') ? `[${address}]` : address)
