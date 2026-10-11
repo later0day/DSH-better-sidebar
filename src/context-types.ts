@@ -74,6 +74,8 @@ export interface SidebarWebUpgradeRoute {
 
 /** The webServer service face this plugin uses. */
 export interface SidebarWebServer {
+  /** The listener's bind IP literal; the fence accepts it on any port, like the Connection fence. */
+  readonly host?: string
   register(route: SidebarWebRoute): () => void
   registerUpgrade(route: SidebarWebUpgradeRoute): () => void
 }
@@ -98,12 +100,11 @@ export interface SidebarSessionStore {
 }
 
 /**
- * The web runtime service face (mirror of @deepseek-ai/dsh-web-app's
- * WebRuntimeValues): the bind-derived trust list the /api gateway's fence
- * accepts — LAN IP literals sampled when the server binds all interfaces,
- * plus explicit `--trusted-host` authorities.
+ * The web startup service face (mirror of @deepseek-ai/dsh-web-app's
+ * WebStartupValues): the explicit `--trusted-host` authorities the /api
+ * gateway's fence accepts besides loopback and the listener's bind IP.
  */
-export interface SidebarWebRuntime {
+export interface SidebarWebStartup {
   trustedHosts: readonly string[]
 }
 
@@ -755,8 +756,8 @@ export interface SidebarContextShape {
   webServer: SidebarWebServer
   /** The session store (host `.get`) and the client list feed (`.list`) faces. */
   sessions: SidebarSessionStore & SidebarSessionsService
-  /** The web runtime trust list (bind-derived). */
-  webRuntime: SidebarWebRuntime
+  /** The web startup trust list (`--trusted-host` authorities). */
+  webStartup: SidebarWebStartup
   /** The client slot registry (register/inject). */
   slots: SidebarSlotsService
   /** The settings service face (prefs persistence + namespace reads). */

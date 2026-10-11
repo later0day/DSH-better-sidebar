@@ -111,7 +111,7 @@ function readZip(archive: Buffer): ParsedEntry[] {
 function mountHost(): { api: SidebarWebRoute; download: SidebarWebRoute } {
   const routes: SidebarWebRoute[] = []
   const ctx = {
-    webRuntime: { trustedHosts: [] },
+    webStartup: { trustedHosts: [] },
     webServer: {
       register: (route: SidebarWebRoute) => { routes.push(route); return () => {} },
       registerUpgrade: (route: SidebarWebUpgradeRoute) => { void route; return () => {} },

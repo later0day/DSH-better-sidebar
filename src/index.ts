@@ -3,11 +3,10 @@
  * read/write, git), the /sidebar/file media route (images), the /sidebar/html
  * preview route, the /sidebar/bundle lazy-chunk route (client code splits),
  * and the two WebSocket upgrades (sidebar_open pushes). Every route passes the same
- * browser-trust fence as the /api gateway — Host-header loopback or the
- * web runtime's `trustedHosts` (LAN IP literals sampled at boot plus
- * `--trusted-host` authorities), read per request from the live service
- * value so the fence tracks the same trust source the /api gateway derives
- * its list from.
+ * browser-trust fence as the /api gateway — Host-header loopback, the
+ * listener's bind IP, or the web startup's `trustedHosts` (`--trusted-host`
+ * authorities), read per request from the live service values so the fence
+ * tracks the same trust sources the /api gateway reads.
  *
  * All operations are conversation-scoped: requests carry a sessionId and the
  * session's authoritative cwd comes from the session store.
@@ -109,8 +108,8 @@ export interface SidebarFsLevel {
   error?: string
 }
 
-/** Services required before mounting: the webserver routes, the session store, the web runtime's trusted hosts, and the tool registry. */
-export const inject = ['webServer', 'sessions', 'webRuntime', 'tools']
+/** Services required before mounting: the webserver routes, the session store, the web startup's trusted hosts, and the tool registry. */
+export const inject = ['webServer', 'sessions', 'webStartup', 'tools']
 
 /** Content types for the media route, by extension. */
 const MEDIA_TYPES: Record<string, string> = {
@@ -1185,18 +1184,18 @@ async function importLegacyPrefs(
 
 /**
  * Plugin body: mount the fenced routes and the sidebar_open push socket.
- * @param ctx - host plugin context (webServer, sessions, webRuntime).
+ * @param ctx - host plugin context (webServer, sessions, webStartup).
  * @param config - deployment-provided limits; the Loader validates against
  * {@link Config} and fills defaults, direct callers get them from
  * {@link resolveSidebarConfig}.
  */
 export function apply(ctx: Context, config?: SidebarConfig): void {
   const resolved = resolveSidebarConfig(config)
-  // The web runtime's bind-derived trust list (boot-sampled LAN literals
-  // plus --trusted-host authorities) — the authoritative source the /api
-  // gateway fence derives its list from. Read per request from the live
-  // service value; a replaced list takes effect without a plugin restart.
-  const fence = (req: SidebarHttpRequest): boolean => isTrustedApiRequest(req, ctx.webRuntime.trustedHosts)
+  // The same trust sources the /api gateway fence reads: the web startup's
+  // --trusted-host authorities and the listener's bind IP. Read per request
+  // from the live service values; a replaced list takes effect without a
+  // plugin restart.
+  const fence = (req: SidebarHttpRequest): boolean => isTrustedApiRequest(req, ctx.webStartup.trustedHosts, ctx.webServer.host)
   // The model-facing open-request registry: queues `sidebar_open` requests
   // per session and pushes them to connected sidebar views over the
   // `/sidebar/ws/agent-opens` socket.

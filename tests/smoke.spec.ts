@@ -33,7 +33,7 @@ const canCreateSymlink = (() => {
 })()
 
 interface FakeContext {
-  webRuntime: { trustedHosts: readonly string[] }
+  webStartup: { trustedHosts: readonly string[] }
   webServer: {
     register: (route: SidebarWebRoute) => () => void
     registerUpgrade: (route: SidebarWebUpgradeRoute) => () => void
@@ -61,7 +61,7 @@ describe('host plugin smoke', () => {
     const upgrades: SidebarWebUpgradeRoute[] = []
     const effects: Array<() => void | (() => void)> = []
     const ctx: FakeContext = {
-      webRuntime: { trustedHosts: [] },
+      webStartup: { trustedHosts: [] },
       webServer: {
         register: (route) => { routes.push(route); return () => {} },
         registerUpgrade: (route) => { upgrades.push(route); return () => {} },
@@ -103,7 +103,7 @@ describe('host plugin smoke', () => {
     const routes: SidebarWebRoute[] = []
     const effects: Array<() => void | (() => void)> = []
     const ctx: FakeContext = {
-      webRuntime: { trustedHosts: [] },
+      webStartup: { trustedHosts: [] },
       webServer: {
         register: (route) => { routes.push(route); return () => {} },
         registerUpgrade: () => () => {},
@@ -400,7 +400,7 @@ describe('session cwd resolution over the API route', () => {
   const mountAll = (overrides: CtxOverrides = {}): SidebarWebRoute[] => {
     const routes: SidebarWebRoute[] = []
     const ctx = {
-      webRuntime: { trustedHosts: [] },
+      webStartup: { trustedHosts: [] },
       webServer: {
         register: (route: SidebarWebRoute) => { routes.push(route); return () => {} },
         registerUpgrade: (route: SidebarWebUpgradeRoute) => { void route; return () => {} },
@@ -1228,7 +1228,7 @@ const createFakeSettings = (pre?: Record<string, Record<string, unknown>>) => {
 const mountWithSettings = (settings?: unknown, home?: string): SidebarWebRoute => {
   const routes: SidebarWebRoute[] = []
   const ctx = {
-    webRuntime: { trustedHosts: [] },
+    webStartup: { trustedHosts: [] },
     webServer: {
       register: (route: SidebarWebRoute) => { routes.push(route); return () => {} },
       registerUpgrade: (route: SidebarWebUpgradeRoute) => { void route; return () => {} },
@@ -1468,7 +1468,7 @@ describe('agent sidebar-open tool gating', () => {
       configure: () => () => {},
     }
     const ctx = {
-      webRuntime: { trustedHosts: [] },
+      webStartup: { trustedHosts: [] },
       webServer: {
         register: (route: SidebarWebRoute) => { routes.push(route); return () => {} },
         registerUpgrade: (route: SidebarWebUpgradeRoute) => { void route; return () => {} },
