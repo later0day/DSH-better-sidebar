@@ -14,7 +14,7 @@
  * terminal, which is `bottomOnly` and therefore contributes no native tab
  * type. It is the one built-in whose carrier surface is asserted here.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import { VscCommentDiscussion, VscGitCommit, VscLayers } from 'react-icons/vsc'
 // First import: browser globals before the xterm-carrying builtin graph loads.
@@ -139,6 +139,24 @@ describe('built-in tab registrations', () => {
     const sidechat = service.getTab('sidechat')
     expect(sidechat?.order).toBe(35)
     expect(sidechat?.hidden).not.toBe(true)
+  })
+
+  it('mints side-chat and bottom-terminal tab ids on insecure pages', () => {
+    // A plain-HTTP LAN page is no secure context, so crypto.randomUUID is
+    // absent there; minting must still succeed with distinct ids.
+    const { service } = setup()
+    vi.stubGlobal('crypto', {})
+    try {
+      for (const id of ['sidechat', 'terminal-bottom']) {
+        const tab = service.getTab(id)
+        const a = tab?.createTab?.(undefined as never)
+        const b = tab?.createTab?.(undefined as never)
+        expect(a?.tab.id, id).toMatch(new RegExp(`^${id}:`))
+        expect(a?.tab.id, id).not.toBe(b?.tab.id)
+      }
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('side chat mints one tab per thread (Codex-style multi-instance)', () => {
