@@ -27,6 +27,7 @@ import { t } from '../locales.ts'
 import { openSidebarFile } from '../sidebar-file.ts'
 import { EditorHost } from '../EditorHost.tsx'
 import { OpenWithSettings } from '../open-with-settings.tsx'
+import { newTabNonce } from '../tab-nonce.ts'
 import { CommitModelSettings } from '../changes/CommitModelSettings.tsx'
 import { ChangesTab, opCountOf } from '../changes/ChangesTab.tsx'
 import { DiffTab } from '../DiffTab.tsx'
@@ -297,7 +298,7 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
         }
         return {
           tab: {
-            id: `sidechat:new-${crypto.randomUUID()}`,
+            id: `sidechat:new-${newTabNonce()}`,
             type: 'sidechat',
             title: t('sideChatUntitled'),
             meta: { autoCreate: true },
@@ -369,10 +370,10 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
       // host binding by instance+run).
       createTab: () => ({
         tab: {
-          id: `terminal-bottom:${crypto.randomUUID()}`,
+          id: `terminal-bottom:${newTabNonce()}`,
           type: 'terminal-bottom',
           title: t('terminal'),
-          meta: { [INSTANCE_FIELD]: crypto.randomUUID() },
+          meta: { [INSTANCE_FIELD]: newTabNonce() },
         },
       }),
       // The service is probed, never injected (it is absent on deployments
