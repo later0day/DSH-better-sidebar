@@ -370,9 +370,13 @@ export interface SidebarAgentPresetsService {
 }
 
 /**
- * The experimental Agent Teams service face (`ctx.agentTeams`, mounted only
- * when the deployment loads `dsh-experimental-agent-team-profile`; absent →
- * `ctx.get` returns undefined and the Teams block hides).
+ * The Agent Teams service face (`ctx.agentTeams`).
+ *
+ * DSH 0.2.2-rc.2 replaced the opt-in `dsh-experimental-agent-team` package
+ * with `@deepseek-ai/dsh-agent-team` in the base composition. The service is
+ * therefore always mounted, while a session opts in per tree
+ * (`enabled: false` by default); the Teams block still hides when the Lead's
+ * `agentTeam` projection says the session runs no team.
  *
  * Only the WRITE half is mirrored here. DSH 0.1.7 deleted the 0.1.6
  * `remoteView` / `remoteCreateTask` / `remoteUpdateTask` trio (the browser UI
@@ -382,14 +386,17 @@ export interface SidebarAgentPresetsService {
  * never touch this service any more; the two remaining calls each need the
  * exact live Lead Agent as their authority credential, hence the host routes.
  *
- * Rejections are THROWN now, not returned: `createTask` / `updateTask` hand
- * back the committed view, and a stale revision throws a `TeamError`
- * (`HarnessError` subclass, `code === 'TEAM_TASK_STALE_REVISION'`) instead of
- * resolving the 0.1.6 `TeamTaskMutationResult` union.
+ * 0.2.2-rc.2 removed the roster's `tryMembership` probe: the current service
+ * exposes `isEnabled`, and a team member is a direct subagent of the Lead
+ * (the roster is read from `subagentCatalog`, never from this service).
+ *
+ * Rejections are THROWN, not returned: `createTask` / `updateTask` hand back
+ * the committed view, and a stale revision throws a `TeamError`
+ * (`HarnessError` subclass, `code === 'TEAM_TASK_STALE_REVISION'`).
  */
 export interface SidebarAgentTeamsService {
-  /** The agent's team membership, or undefined for a non-team/stale agent. */
-  tryMembership(agent: unknown): unknown
+  /** Whether Team tools and the task board are enabled for this agent's tree. */
+  isEnabled(agent: unknown): boolean
   /** Create one shared task (CAS-free; ids are server-issued). */
   createTask(agent: unknown, req: SidebarCreateTeamTaskRequest): Promise<SidebarTeamTaskView>
   /** Compare-and-set mutation of one shared task (stale revision → throws). */
@@ -397,48 +404,18 @@ export interface SidebarAgentTeamsService {
 }
 
 /**
- * One team member as the runtime-enriched `listMembers` view reports it.
- * NOT consumed by this plugin any more (the projection below carries the
- * durable half and the live channel carries activity, see
- * ./client/team-projection.ts); kept as the mirror of the service's own
- * vocabulary so a future reader does not re-derive it.
- */
-export interface SidebarTeamMemberView {
-  /** The member's session id (the teammate's child session under the lead). */
-  id: string
-  name: string
-  role: 'lead' | 'teammate'
-  status: 'running' | 'idle' | 'inactive' | 'provisioning' | 'failed'
-  description?: string
-  provider?: string
-  context?: 'fresh' | 'fork'
-  model?: string
-  diagnostics: string[]
-}
-
-/**
- * One durable roster row of the Lead Session's `agentTeam` projection. Phase
- * is the DURABLE lifecycle (the Lead row is always `active`); turn activity is
- * overlaid from the session's own status (see ./client/team-projection.ts).
- */
-export interface SidebarTeamMemberProjection {
-  /** The member's session id (the teammate's child session under the lead). */
-  id: string
-  name: string
-  role: 'lead' | 'teammate'
-  phase: 'provisioning' | 'active' | 'failed'
-  /** The provisioning failure, when the durable row records one. */
-  error?: string
-}
-
-/**
- * The Lead Session's published team state: durable roster identities and
- * phases, member errors, the non-deleted task views (0.1.6's `TeamView` shape,
- * enriched per task exactly like the service's own views), and the first
- * rejected Team record when the board had to stop at its last valid state.
+ * The Lead Session's published team state: the durable mode selection, the
+ * non-deleted task views, and the first rejected Team record when the board had
+ * to stop at its last valid state.
+ *
+ * The roster is NOT part of this value. Since the Team package migration the
+ * wire value carries no `members`; a team member is a direct subagent of the
+ * Lead and is read from the Lead's `subagentCatalog` instead (see
+ * ./client/team-projection.ts).
  */
 export interface SidebarTeamProjection {
-  members: readonly SidebarTeamMemberProjection[]
+  /** The durable Team-mode selection; `false` means this session runs no team. */
+  enabled?: boolean
   tasks: readonly SidebarTeamTaskView[]
   failure?: string
 }
@@ -501,6 +478,20 @@ export interface SidebarSessionTitleService {
  */
 export interface SidebarSessionPersistenceService {
   open(sessionId: string, access: 'read' | 'write'): Promise<SidebarSessionHandle>
+  /**
+   * Header-only snapshot of ONE stored session (revision + immutable header).
+   * The cold cwd resolver reads the stored header through this: it is the one
+   * persistence call that never decodes the log. Absent on a host without it —
+   * every caller must degrade to a client hint.
+   */
+  stat?(sessionId: string): Promise<{
+    /** Immutable stored header (cwd / agentPreset live here). */
+    header: { cwd?: string; agentPreset?: string } & Record<string, unknown>
+    /** Opaque change token of the stored artifact. */
+    revision?: unknown
+    /** Physical artifact size in bytes, when the backend can provide it. */
+    sizeBytes?: number
+  } | undefined>
 }
 
 /** One open channel onto a stored session (the fields this plugin reads). */
@@ -592,6 +583,12 @@ export interface SidebarSubagentCatalogEntry {
   mode: 'one-shot' | 'continuable' | 'unknown'
   /** Mode-specific label; continuable children always carry one. */
   label?: string
+  /**
+   * The child's agent name, unique among its siblings (catalog payload v3).
+   * Absent on entries recorded before names existed, and on modes that never
+   * carried one.
+   */
+  name?: string
 }
 
 /** The client sessions service face (only the list feed is needed). */
@@ -660,14 +657,75 @@ export interface SidebarLocaleService {
   register(ns: string, locale: string, dict: Record<string, string>): () => void
 }
 
+/**
+ * One reference chip's footprint in the draft, in clipboard-projection
+ * coordinates: the chip covers `[offset, offset + length)`. Read straight off
+ * the host's published `InputState.occurrences`.
+ */
+export interface SidebarSessionOccurrence {
+  /** Start offset in the clipboard projection (the same plane as `draft`). */
+  offset: number
+  /** Length in the clipboard projection (the chip's whole `clipboardText`). */
+  length: number
+}
+
+/** One structured reference chip's insertion payload (mirror of the host's
+ *  `ReferenceInsert`). */
+export interface SidebarReferenceInsert {
+  /** Trigger source id; `'reference'` for a programmatic insert. */
+  source: string
+  /** What the model receives on send — the chip's full serialized form. */
+  ref: string
+  /** What the composer shows in place of `ref`. */
+  label: string
+  /** Chip icon family; the host picks its own default when omitted. */
+  appearance?: 'session' | 'file' | 'folder'
+  /** The text this chip occupies in the draft projection. */
+  clipboardText: string
+}
+
 /** The composer draft face the sidebar reaches through `ctx.conversation.input`. */
 export interface SidebarSessionInput {
   /** The live input store (draft read for append). `draftRev` is the machine's
-   *  span-CAS revision — required to mint a structured file-reference chip. */
+   *  span-CAS revision — required to mint a structured reference chip. */
   state: {
-    getSnapshot(): { draft: string; draftRev?: number }
+    getSnapshot(): {
+      draft: string
+      draftRev?: number
+      /**
+       * The editor's reference chips as footprints in `draft` coordinates:
+       * `[offset, offset + length)` per chip, sorted by offset. The host's
+       * insert/replace spans live in the *editor* projection instead (one
+       * placeholder character per chip), so a span derived from a `draft`
+       * offset must fold through these first (`foldClipboardOffset`).
+       * Absent on hosts without the chip channel.
+       */
+      occurrences?: readonly SidebarSessionOccurrence[]
+      /**
+       * Admission phase. `claimed` means a command chip (`/goal`) heads the
+       * draft; `adjudicating`/`submitting` freeze every write. A command chip
+       * is NOT in `occurrences` (the host only collects reference chips), yet
+       * it still collapses to one character in the detect projection — so a
+       * span derived from `draft` is wrong whenever `phase === 'claimed'`.
+       */
+      phase?: 'plain' | 'adjudicating' | 'claimed' | 'submitting'
+      /**
+       * The claimed command's spelling with its trailing separator (`/goal `),
+       * present exactly while `phase` is `claimed`/`submitting`. The host
+       * treats it as one chip covering this exact draft prefix.
+       */
+      claim?: { readonly token: string }
+    }
   }
-  /** Replace the draft text (the input machine's single public write path). */
+  /**
+   * Replace the trigger span with one reference chip (span-CAS'd). Absent on
+   * hosts without the chip channel.
+   */
+  insertReference?(
+    ref: SidebarReferenceInsert,
+    span: { start: number; end: number; draftRev: number },
+  ): boolean
+  /** Replace the draft text — flattens every existing chip into its text. */
   setDraft(text: string): void
 }
 
@@ -676,6 +734,19 @@ export interface SidebarConversation {
   input: {
     for(actx: Context): SidebarSessionInput
   }
+}
+
+/**
+ * The client input-trigger registry face this plugin consumes
+ * (`ctx.inputTriggers`, provided by @deepseek-ai/dsh-client-ui-input-trigger,
+ * DSH 0.2.1+). Only the registration the quote chip needs is mirrored here —
+ * the source shape itself is declared structurally in
+ * `./client/selection-quote.ts`. Optional on {@link SidebarContextShape} so
+ * older hosts and test fakes simply hide the feature.
+ */
+export interface SidebarInputTriggerServiceFace {
+  /** Register one trigger source; `(trigger, name)` must be unique (duplicates throw). */
+  registerSource(src: object): () => void
 }
 
 /** Read-only subset of api-workspace-controller's public IWorkspaces.list. */
@@ -798,14 +869,6 @@ export interface SidebarContextShape {
     readonly defaultDirectory?: string
     get(session: { header: SidebarSessionHeader }): string
   }
-  /** Host-owned live/prepared observation, including cold-session projections. */
-  sessionQuery: {
-    observeSession(id: string, options: { projectionMode: 'all' }): Promise<{
-      header: SidebarSessionHeader
-      projections?: { values: { workingDirectory?: string | null } }
-      [Symbol.dispose](): void
-    }>
-  }
   /** Native host request admission and client transport recovery. */
   connection: SidebarConnectionService
   /** The client slot registry (register/inject). */
@@ -846,6 +909,13 @@ export interface SidebarContextShape {
   sessionPersistence: SidebarSessionPersistenceService
   /** The composer draft face (client ui-conversation, lazy `ctx.get` probe). */
   conversation: SidebarConversation
+  /**
+   * The client input-trigger registry (DSH 0.2.1+, optional so older hosts and
+   * test fakes hide it): the quote chip registers a source here so its clicks
+   * open the quoted lines and its send-time serialization expands the fence
+   * (see `./client/selection-quote.ts`).
+   */
+  inputTriggers?: SidebarInputTriggerServiceFace
   /** Host-authoritative workspace membership; resolved lazily at reference insertion. */
   workspaces?: SidebarWorkspacesService
   /**

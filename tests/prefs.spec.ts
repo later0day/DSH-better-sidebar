@@ -35,6 +35,10 @@ describe('side card preferences', () => {
         autoOpenSubagent: false,
         autoOpenJobs: true,
         tasksViewMode: 'graph',
+        tasksAutoFoldSettled: true,
+        tasksAutoFoldBranches: true,
+        tasksAutoFoldIdle: true,
+        jobsAutoCollapse: true,
         mobileNoAutoOpen: true,
         mobileDefaultTree: true,
         agentOpenTools: true,
@@ -47,6 +51,11 @@ describe('side card preferences', () => {
         tabsEnabled: {},
         viewersEnabled: {},
         pluginSettings: {},
+        guideRows: 6,
+        guideOrder: [],
+        guideHidden: {},
+        guideAlign: 'center',
+        guideTakeover: true,
       })
   })
 
@@ -56,6 +65,10 @@ describe('side card preferences', () => {
         autoOpenSubagent: true,
         autoOpenJobs: true,
         tasksViewMode: 'graph',
+        tasksAutoFoldSettled: true,
+        tasksAutoFoldBranches: true,
+        tasksAutoFoldIdle: true,
+        jobsAutoCollapse: true,
         mobileNoAutoOpen: true,
         mobileDefaultTree: true,
         agentOpenTools: false,
@@ -68,6 +81,11 @@ describe('side card preferences', () => {
         tabsEnabled: {},
         viewersEnabled: {},
         pluginSettings: {},
+        guideRows: 6,
+        guideOrder: [],
+        guideHidden: {},
+        guideAlign: 'center',
+        guideTakeover: true,
       })
   })
 
@@ -77,6 +95,10 @@ describe('side card preferences', () => {
         autoOpenSubagent: true,
         autoOpenJobs: true,
         tasksViewMode: 'graph',
+        tasksAutoFoldSettled: true,
+        tasksAutoFoldBranches: true,
+        tasksAutoFoldIdle: true,
+        jobsAutoCollapse: true,
         mobileNoAutoOpen: true,
         mobileDefaultTree: true,
         agentOpenTools: false,
@@ -89,6 +111,11 @@ describe('side card preferences', () => {
         tabsEnabled: {},
         viewersEnabled: {},
         pluginSettings: {},
+        guideRows: 6,
+        guideOrder: [],
+        guideHidden: {},
+        guideAlign: 'center',
+        guideTakeover: true,
       })
     expect((await loadPrefs(wire({ autoOpenSubagent: 1 }))).autoOpenSubagent)
       .toBe(true)
@@ -104,6 +131,17 @@ describe('side card preferences', () => {
       .toBe(true)
     expect((await loadPrefs(wire({ autoOpenJobs: false }))).autoOpenJobs)
       .toBe(false)
+  })
+
+  it('defaults automatic task folding and jobs collapse to on and preserves explicit booleans', async () => {
+    for (const key of ['tasksAutoFoldSettled', 'tasksAutoFoldBranches', 'tasksAutoFoldIdle', 'jobsAutoCollapse'] as const) {
+      expect(SIDEBAR_PREFS_DEFAULTS[key], key).toBe(true)
+      for (const malformed of [undefined, null, 'false', 0, [], {}]) {
+        expect((await loadPrefs(wire({ [key]: malformed })))[key], key).toBe(true)
+      }
+      expect((await loadPrefs(wire({ [key]: false })))[key], key).toBe(false)
+      expect((await loadPrefs(wire({ [key]: true })))[key], key).toBe(true)
+    }
   })
 
   it('defaults both mobile adaptations to on; only an explicit false disarms one', async () => {
@@ -191,6 +229,36 @@ describe('side card preferences', () => {
     }))
     expect(parsed.tabsEnabled).toEqual({ git: false, explorer: true })
     expect(parsed.viewersEnabled).toEqual({ image: false })
+  })
+
+  it('validates the start-page preferences: rows >= 1, a clean order, boolean visibility', async () => {
+    // Rows are a maximum, 1-based, and malformed/zero values fall back to 6.
+    expect((await loadPrefs(wire({}))).guideRows).toBe(6)
+    for (const bad of [undefined, null, 0, -1, 2.5, '4', NaN]) {
+      expect((await loadPrefs(wire({ guideRows: bad }))).guideRows).toBe(6)
+    }
+    expect((await loadPrefs(wire({ guideRows: 1 }))).guideRows).toBe(1)
+    expect((await loadPrefs(wire({ guideRows: 42 }))).guideRows).toBe(42)
+
+    // The order keeps first-seen order, trims, drops blanks/non-strings and dedupes.
+    expect((await loadPrefs(wire({ guideOrder: [' b ', 'a', 'b', '', 3] }))).guideOrder)
+      .toEqual(['b', 'a'])
+    expect((await loadPrefs(wire({ guideOrder: 'a' }))).guideOrder).toEqual([])
+
+    // Visibility is an open boolean map; absent means visible.
+    expect((await loadPrefs(wire({ guideHidden: { a: true, b: false, c: 'yes' } }))).guideHidden)
+      .toEqual({ a: true, b: false })
+    expect((await loadPrefs(wire({ guideHidden: [] }))).guideHidden).toEqual({})
+
+    // Vertical alignment: only the two known values survive.
+    expect((await loadPrefs(wire({ guideAlign: 'top' }))).guideAlign).toBe('top')
+    expect((await loadPrefs(wire({ guideAlign: 'center' }))).guideAlign).toBe('center')
+    expect((await loadPrefs(wire({ guideAlign: 'bottom' }))).guideAlign).toBe('center')
+
+    // Takeover is on by default; only an explicit false disarms it.
+    expect((await loadPrefs(wire({}))).guideTakeover).toBe(true)
+    expect((await loadPrefs(wire({ guideTakeover: 'no' }))).guideTakeover).toBe(true)
+    expect((await loadPrefs(wire({ guideTakeover: false }))).guideTakeover).toBe(false)
   })
 
 })

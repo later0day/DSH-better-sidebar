@@ -3,7 +3,6 @@ import { act } from 'react-dom/test-utils'
 import { afterEach, expect, it, vi } from 'vitest'
 import { api, type GitStatusResult, type SessionScope } from '../src/client/api.ts'
 import { GitLens } from '../src/client/changes/GitLens.tsx'
-import { createSidebarStore } from '../src/client/state.ts'
 import { invalidateGitStatus } from '../src/client/ui/git-status.ts'
 import { t } from '../src/client/locales.ts'
 import { renderRoot, setupReactAct } from './test-utils.ts'
@@ -11,7 +10,20 @@ import { renderRoot, setupReactAct } from './test-utils.ts'
 setupReactAct()
 afterEach(() => { vi.restoreAllMocks() })
 const CWD = 'C:/repo'
-const store = createSidebarStore()
+/** The unstage artwork the SCM rows draw (the plugin's own inline horizontal half). */
+const MINUS_GLYPH = 'M2 8H14'
+/** The host's own Plus, a document-sprite reference since DSH 0.2.2 (it used
+ *  to be inline `<path>` artwork, so only the sprite id identifies it now). */
+const PLUS_ICON = '#dsw-icon-plus-outline-regular'
+/** One action button's artwork as the DOM carries it: the host's icons are
+ *  sprite references (`<use href="#dsw-icon-…">`), the plugin's minus is still
+ *  inline artwork, so both shapes have to be readable. */
+const glyphOf = (button: HTMLButtonElement): string => {
+  const svg = button.querySelector('svg')!
+  const sprite = svg.getAttribute('data-icon')
+  if (sprite !== null) return `#${sprite}`
+  return [...svg.querySelectorAll('path')].map(path => path.getAttribute('d')).join(' ')
+}
 const tracked = (): GitStatusResult => ({
   isRepo: true, branch: 'main', root: CWD, upstream: 'origin/main', ahead: 1, behind: 0,
   entries: [{ path: 'src/partial.ts', xy: 'MD' }, { path: 'new.ts', xy: '??' }],
@@ -44,7 +56,7 @@ async function mount(readStatus: (scope: SessionScope) => GitStatusResult) {
     hasMore: false,
     snapshot: 'one',
   })
-  const render = (sessionId: string) => <GitLens scope={{ sessionId, cwd: CWD }} store={store} visible
+  const render = (sessionId: string) => <GitLens scope={{ sessionId, cwd: CWD }} visible
     selectedRef={null} onOpenFile={() => {}} onPreview={() => {}} />
   const view = renderRoot(render('scm-A'))
   await flush()
@@ -125,17 +137,16 @@ it('keeps directory/all actions inside their group, including Merge directory fo
       expect(action.querySelector('svg')!.getAttribute('width')).toBe('12')
       expect(action.querySelector('svg')!.getAttribute('height')).toBe('12')
       // Staging and unstaging must not share artwork: a staged row's action
-      // unstages (the minus), every other row's stages (the host's Plus).
-      const glyphs = [...action.querySelectorAll('svg path')].map(path => path.getAttribute('d'))
+      // unstages (the plugin's minus), every other row's stages (the host's
+      // Plus sprite).
       const stagedRow = row.closest('[data-group]')!.getAttribute('data-group') === 'staged'
-      expect(glyphs).toEqual(stagedRow ? ['M2 8H14'] : ['M8 2V14', 'M2 8H14'])
+      expect(glyphOf(action)).toBe(stagedRow ? MINUS_GLYPH : PLUS_ICON)
     }
     for (const name of ['merge', 'staged', 'unstaged']) {
       const headerAction = group(name).firstElementChild!.querySelector<HTMLButtonElement>(`button[aria-label="${t(name === 'staged' ? 'unstageAll' : 'stageAll')}"]`)!
       expect(headerAction.querySelector('svg')!.getAttribute('width')).toBe('12')
       expect(headerAction.querySelector('svg')!.getAttribute('height')).toBe('12')
-      expect([...headerAction.querySelectorAll('svg path')].map(path => path.getAttribute('d')))
-        .toEqual(name === 'staged' ? ['M2 8H14'] : ['M8 2V14', 'M2 8H14'])
+      expect(glyphOf(headerAction)).toBe(name === 'staged' ? MINUS_GLYPH : PLUS_ICON)
     }
     await click(dir('merge'))
     expect(dir('merge').getAttribute('aria-expanded')).toBe('false')

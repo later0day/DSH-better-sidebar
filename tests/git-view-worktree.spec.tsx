@@ -15,7 +15,6 @@ import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
 import { GitLens } from '../src/client/changes/GitLens.tsx'
-import { createSidebarStore } from '../src/client/state.ts'
 import { api, type GitStatusEntry, type GitStatusResult, type GitWorktree } from '../src/client/api.ts'
 import type { BetterSidebarService } from '../src/client/service.ts'
 import { t } from '../src/client/locales.ts'
@@ -91,7 +90,6 @@ function mountGit(
   act(() => {
     root.render(createElement(GitLens, {
       scope: options.scope ?? { sessionId: 'session', cwd: MAIN },
-      store: createSidebarStore(),
       onOpenFile: () => {},
       onPreview: () => {},
       selectedRef: null,
@@ -123,7 +121,7 @@ function openMoreSubmenu(container: HTMLElement, label: string): HTMLButtonEleme
   const parent = menuItem(label)
   expect(parent.getAttribute('aria-haspopup')).toBe('menu')
   act(() => { parent.click() })
-  return [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menu"] button[role="menuitem"]')]
+  return [...document.querySelectorAll<HTMLButtonElement>('[role="menu"][data-submenu-layout] button[role="menuitem"]')]
 }
 
 async function chooseMoreOption(container: HTMLElement, submenu: string, label: string): Promise<void> {
@@ -283,6 +281,9 @@ describe('GitLens (changes tab, git lens) linked-worktree consistency', () => {
       expect(branch).toHaveBeenLastCalledWith(expect.objectContaining({ repoRoot: REPO_B }), REPO_B)
       expect(openMoreSubmenu(container, t('worktree')).map(button => button.textContent))
         .toEqual(['b-main · b (0)', 'b-agent · b-agent (2)'])
+      // DSH 0.2.2's Menu returns from a visible submenu on the first Escape;
+      // the second Escape closes the parent menu.
+      act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
       act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
 
       await chooseMoreOption(container, t('gitRepository'), 'a')
