@@ -118,14 +118,24 @@ export interface SidebarSessionStore {
  * Host request admission plus the client transport recovery face.
  */
 export interface SidebarConnectionService {
-  /** Public Host/Origin and authentication policy (DSH 0.2.0-rc.2+). */
-  requestRejection(request: { headers: Record<string, string | string[] | undefined> }): 401 | 403 | undefined
+  /**
+   * Public Host/Origin and authentication policy (DSH 0.2.2-rc.3). Replaces
+   * the 0.1.7–0.2.1 `requestRejection(request) → 401|403|undefined`: the
+   * connection service now answers with the full admission outcome — the
+   * serving Peer, or the rejection status refusing it.
+   */
+  admit(request: { headers: Record<string, string | string[] | undefined> }): SidebarPeerAdmission
   state: {
     getSnapshot(): 'connected' | 'disconnected' | 'connecting' | undefined
     subscribe(listener: () => void): () => void
   }
   reconnect(): void
 }
+
+/** One admission outcome as the fence consumes it: the peer, or the refusal. */
+export type SidebarPeerAdmission =
+  | { readonly peer?: unknown }
+  | { readonly rejection: 401 | 403 | 503 }
 
 /** Registration options the sidebar passes to `ctx.slots.register` (subset of the real options). */
 export interface SidebarSlotRegisterOptions {

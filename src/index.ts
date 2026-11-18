@@ -113,7 +113,7 @@ export interface SidebarFsLevel {
 }
 
 /** Services required before mounting: routes, sessions, native request admission, and tools. */
-export const inject = ['webServer', 'sessions', 'connection', 'tools']
+export const inject = ['webServer', 'sessions', 'connection', 'connection.authentication', 'tools']
 
 /** Content types for media files and HTML preview resources, by extension. */
 const MEDIA_TYPES: Record<string, string> = {
@@ -1438,8 +1438,13 @@ async function importLegacyPrefs(
 export function apply(ctx: Context, config?: SidebarConfig): void {
   const resolved = resolveSidebarConfig(config)
   // Connection owns both deployment trust and authentication; never infer or
-  // bypass its policy from invocation flags or a copied trust list.
-  const fence = (req: SidebarHttpRequest): boolean => ctx.connection.requestRejection(req) === undefined
+  // bypass its policy from invocation flags or a copied trust list. rc.3's
+  // admit() answers {peer} or {rejection}; only a live admission serves, and
+  // an unexpected non-object answer is a refusal, never a pass.
+  const fence = (req: SidebarHttpRequest): boolean => {
+    const admission = ctx.connection.admit(req)
+    return typeof admission === 'object' && admission !== null && 'peer' in admission
+  }
   // The model-facing open-request registry: queues `sidebar_open` requests
   // per session and pushes them to connected sidebar views over the
   // `/sidebar/ws/agent-opens` socket.

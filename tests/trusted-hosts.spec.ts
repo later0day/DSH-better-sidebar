@@ -6,7 +6,10 @@ import type { SidebarHttpRequest, SidebarWebRoute, SidebarWebUpgradeRoute } from
 /** No retired webRuntime service: rc.2 and newer both expose Connection admission. */
 function mount(initialRejection: 401 | 403 | undefined = undefined) {
   let rejection = initialRejection
-  const connection = { requestRejection: vi.fn((_request: SidebarHttpRequest) => rejection) }
+  const connection = {
+    admit: vi.fn((_request: SidebarHttpRequest) =>
+      rejection === undefined ? { peer: {} } : { rejection } as const),
+  }
   const routes: SidebarWebRoute[] = []
   const upgrades: SidebarWebUpgradeRoute[] = []
   const effects: Array<() => void> = []
@@ -72,8 +75,8 @@ describe('native Connection admission', () => {
       const { res, out } = response()
       await mounted.routes.find(route => route.path === '/sidebar/api')!.handler(req, res)
       expect(out.status).toBe(200)
-      expect(mounted.connection.requestRejection).toHaveBeenCalledExactlyOnceWith(req)
-      expect(mounted.connection.requestRejection.mock.contexts[0]).toBe(mounted.connection)
+      expect(mounted.connection.admit).toHaveBeenCalledExactlyOnceWith(req)
+      expect(mounted.connection.admit.mock.contexts[0]).toBe(mounted.connection)
     } finally {
       mounted.cleanup()
     }
@@ -95,7 +98,7 @@ describe('native Connection admission', () => {
         await route.handler(input.req, res)
         expect(out.status, route.path).toBe(403)
         expect(input.reads(), route.path).toBe(0)
-        expect(mounted.connection.requestRejection).toHaveBeenLastCalledWith(input.req)
+        expect(mounted.connection.admit).toHaveBeenLastCalledWith(input.req)
       }
       for (const route of mounted.upgrades) {
         const input = request(route.path)
@@ -103,9 +106,9 @@ describe('native Connection admission', () => {
         await route.handler(input.req, socket, new Uint8Array())
         expect(socket.destroy, route.path).toHaveBeenCalledOnce()
         expect(input.reads(), route.path).toBe(0)
-        expect(mounted.connection.requestRejection).toHaveBeenLastCalledWith(input.req)
+        expect(mounted.connection.admit).toHaveBeenLastCalledWith(input.req)
       }
-      expect(mounted.connection.requestRejection).toHaveBeenCalledTimes(mounted.routes.length + mounted.upgrades.length)
+      expect(mounted.connection.admit).toHaveBeenCalledTimes(mounted.routes.length + mounted.upgrades.length)
     } finally {
       mounted.cleanup()
     }
@@ -114,7 +117,7 @@ describe('native Connection admission', () => {
   it.each([null, false, 0, ''])('does not treat an unexpected falsy verdict (%s) as admission', async (verdict) => {
     const mounted = mount()
     try {
-      mounted.connection.requestRejection.mockReturnValue(verdict as never)
+      mounted.connection.admit.mockReturnValue(verdict as never)
       for (const route of mounted.routes) {
         const input = request(route.path)
         const { res, out } = response()
@@ -137,7 +140,7 @@ describe('native Connection admission', () => {
   it('has no old-host fallback when native admission is missing', async () => {
     const mounted = mount()
     try {
-      Reflect.deleteProperty(mounted.connection, 'requestRejection')
+      Reflect.deleteProperty(mounted.connection, 'admit')
       const input = request('/sidebar/api/session.cwd')
       const { res, out } = response()
       await expect(mounted.routes.find(route => route.path === '/sidebar/api')!.handler(input.req, res)).rejects.toThrow(TypeError)
@@ -164,7 +167,7 @@ describe('native Connection admission', () => {
         const { res, out } = response()
         await mounted.routes.find(route => route.path === '/sidebar/file')!.handler(req, res)
         expect(out.status).toBe(403)
-        expect(mounted.connection.requestRejection).toHaveBeenLastCalledWith(req)
+        expect(mounted.connection.admit).toHaveBeenLastCalledWith(req)
         expect(req.headers).toBe(headers)
       }
     } finally {
@@ -183,7 +186,7 @@ describe('native Connection admission', () => {
         await route.handler(req, res)
         expect(out.status).toBe(expected)
       }
-      expect(mounted.connection.requestRejection).toHaveBeenCalledTimes(4)
+      expect(mounted.connection.admit).toHaveBeenCalledTimes(4)
     } finally {
       mounted.cleanup()
     }

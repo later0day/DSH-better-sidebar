@@ -17,7 +17,10 @@ describe('dsh-better-sidebar plugin export shape', () => {
     const unwrapped = loader.unwrapExports(sidebar) as Record<string, unknown>
     expect(unwrapped).toBe(sidebar)
     expect(unwrapped.name).toBe('dsh-better-sidebar')
-    expect(unwrapped.inject).toEqual(['webServer', 'sessions', 'connection', 'tools'])
+    // rc.3 admit port adds the nested `connection.authentication` registry
+    // to the static inject list (optional at runtime via ctx.get, but the
+    // face must be declared for the strict web profile).
+    expect(unwrapped.inject).toEqual(['webServer', 'sessions', 'connection', 'connection.authentication', 'tools'])
     expect(unwrapped.Config).toBeDefined()
     expect(typeof unwrapped.apply).toBe('function')
   })
