@@ -27,6 +27,7 @@ import { t } from '../locales.ts'
 import { openSidebarFile } from '../sidebar-file.ts'
 import { EditorHost } from '../EditorHost.tsx'
 import { OpenWithSettings } from '../open-with-settings.tsx'
+import { newTabNonce } from '../tab-nonce.ts'
 import { CommitModelSettings } from '../changes/CommitModelSettings.tsx'
 import { ChangesTab, opCountOf } from '../changes/ChangesTab.tsx'
 import { DiffTab } from '../DiffTab.tsx'
@@ -99,15 +100,6 @@ function SideChatTab(props: TabComponentProps) {
       submitKey={sidechatSubmitKeyOf(prefs)}
     />
   )
-}
-
-/**
- * A unique tab-id suffix. `crypto.randomUUID` exists only in secure contexts, so a page
- * served over plain HTTP on a LAN address lacks it; fall back to a time-based id there.
- */
-function tabNonce(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`
 }
 
 /** The 6 built-in tab descriptors (the host owns the right-Sidebar terminal and browser). */
@@ -306,7 +298,7 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
         }
         return {
           tab: {
-            id: `sidechat:new-${tabNonce()}`,
+            id: `sidechat:new-${newTabNonce()}`,
             type: 'sidechat',
             title: t('sideChatUntitled'),
             meta: { autoCreate: true },
@@ -378,10 +370,10 @@ export function builtinTabs(ctx: Context): readonly TabDescriptor[] {
       // host binding by instance+run).
       createTab: () => ({
         tab: {
-          id: `terminal-bottom:${tabNonce()}`,
+          id: `terminal-bottom:${newTabNonce()}`,
           type: 'terminal-bottom',
           title: t('terminal'),
-          meta: { [INSTANCE_FIELD]: tabNonce() },
+          meta: { [INSTANCE_FIELD]: newTabNonce() },
         },
       }),
       // The service is probed, never injected (it is absent on deployments
